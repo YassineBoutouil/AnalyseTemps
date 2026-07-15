@@ -1,10 +1,21 @@
 import axios from 'axios'
+import { supabase } from './supabaseClient'
 
 // En local (npm run dev) et en Docker, VITE_API_URL n'est pas défini : on garde
 // le chemin relatif '/api', proxifié vers le backend (voir vite.config.js).
 // Sur Vercel, le frontend et le backend sont deux projets séparés : on pointe
 // VITE_API_URL vers l'URL absolue du backend déployé.
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' })
+
+// Le backend exige un jeton Supabase valide sur chaque requête (voir auth.py).
+api.interceptors.request.use(async (config) => {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
 
 export const getDashboard = (params) => api.get('/dashboard', { params }).then(r => r.data)
 export const getDailySummary = (params) => api.get('/missions/daily-summary', { params }).then(r => r.data)

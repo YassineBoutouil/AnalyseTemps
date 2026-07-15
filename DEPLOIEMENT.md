@@ -153,14 +153,150 @@ backend (`Base.metadata.create_all` dans `main.py`).
 
 ---
 
+## Étape 5 : ajouter une authentification (Supabase Auth)
+
+Les données uploadées contiennent des noms/prénoms de salariés → l'outil doit être
+réservé aux personnes autorisées. On utilise **Supabase Auth**, déjà inclus dans
+le projet Supabase créé à l'étape 1 (pas de nouveau service à créer).
+
+### Principe
+
+- Le frontend affiche un écran de connexion (email + mot de passe) tant que
+  personne n'est identifié.
+- Une fois connecté, chaque appel à l'API embarque un jeton fourni par Supabase
+  (`Authorization: Bearer ...`).
+- Le backend vérifie ce jeton avant de répondre à toute route (sauf `/api/health`,
+  qui reste public pour les vérifications de disponibilité).
+- **Il n'y a pas de page d'inscription** : c'est toi (admin) qui crées les comptes
+  des personnes autorisées, directement depuis Supabase.
+
+### Ce qui a été changé dans le code (fait)
+
+- `backend/app/auth.py` (nouveau) : vérifie la signature et l'expiration du jeton
+  envoyé par le frontend, à partir de la clé publique du projet Supabase
+  (récupérée via `SUPABASE_URL`).
+- `backend/app/main.py` : toutes les routes des routers (`datasets`, `missions`,
+  `agents`, `settings`, `dashboard`) exigent désormais ce jeton. `/api/health`
+  reste public.
+- `backend/requirements.txt` : ajout de `pyjwt[crypto]` (vérification du jeton,
+  y compris les signatures asymétriques) et `python-dotenv` (pour charger un
+  fichier `.env` en local).
+- `backend/.env.example` (nouveau) : modèle à copier en `.env` pour le
+  développement local.
+- `frontend/src/utils/supabaseClient.js` (nouveau) : connexion au projet
+  Supabase depuis le frontend.
+- `frontend/src/auth/AuthContext.jsx` (nouveau) : garde en mémoire qui est
+  connecté, sur toute l'app.
+- `frontend/src/pages/Login.jsx` (nouveau) : écran de connexion. Demande un
+  simple identifiant (ex. `innovation`) + mot de passe, et reconstruit
+  l'email `identifiant@datalian.local` en interne avant d'appeler Supabase.
+- `frontend/src/App.jsx` : affiche l'écran de connexion tant que personne n'est
+  identifié, sinon l'app comme avant.
+- `frontend/src/components/Layout.jsx` : affiche l'email connecté + bouton
+  "Déconnexion" dans la barre latérale.
+- `frontend/src/utils/api.js` : ajoute automatiquement le jeton Supabase à
+  chaque appel API.
+- `frontend/.env.example` (nouveau) : modèle à copier en `.env.local` pour le
+  développement local.
+- `frontend/package.json` : ajout de la dépendance `@supabase/supabase-js`.
+
+Testé en local avec un vrai compte Supabase et un vrai jeton (pas seulement un
+jeton fabriqué à la main) : `/api/health` répond sans jeton, les autres routes
+répondent 401 sans jeton ou avec un jeton invalide, et 200 avec le jeton réel
+délivré par Supabase après connexion.
+
+> **Détail technique découvert en testant** : ce projet Supabase signe ses
+> jetons avec une clé asymétrique (ES256), pas avec l'ancien "JWT Secret"
+> partagé. `auth.py` vérifie donc le jeton via la clé **publique** du projet
+> (récupérée automatiquement à l'adresse
+> `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`) plutôt qu'avec un secret à
+> stocker côté serveur. Résultat : plus simple qu'initialement prévu, le
+> backend n'a besoin de connaître qu'une seule chose, l'URL du projet
+> (`SUPABASE_URL`) — aucun secret à protéger de ce côté-là.
+
+### Ce qu'il te reste à faire
+
+**A. Récupérer l'URL du projet (backend ET frontend)**
+
+1. Supabase → **Project Settings → API** (ou **Connect** en haut de l'écran)
+2. Copie **Project URL** (ex. `https://xxxxx.supabase.co`) — c'est la seule
+   information dont le backend a besoin pour l'authentification.
+
+**B. Récupérer la clé publique du frontend**
+
+1. Toujours sur **Project Settings → API**
+2. Copie la clé **anon public** (onglet "Legacy anon, service_role API keys"
+   si tu ne la vois pas directement — sinon la "Publishable key" fonctionne
+   aussi) — cette clé est *faite* pour être publique, aucun souci à l'exposer
+   côté navigateur.
+
+**C. Configurer le backend déployé (Vercel)**
+
+1. Projet backend → **Settings → Environment Variables**
+2. Ajoute `SUPABASE_URL` = la valeur de l'étape A
+3. Onglet **Deployments** → dernier déploiement → **⋯ → Redeploy**
+
+**D. Configurer le frontend déployé (Vercel)**
+
+1. Projet frontend → **Settings → Environment Variables**
+2. Ajoute `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` (étape B)
+3. **Redeploy** (obligatoire : les variables `VITE_*` sont figées au moment du
+   build, pas relues au démarrage)
+
+**E. Créer les comptes des personnes/services autorisés**
+
+Les comptes utilisent un identifiant simple (ex. `innovation`) plutôt qu'un
+email réel. En interne, Supabase a quand même besoin d'un format email : le
+frontend ajoute automatiquement `@datalian.local` avant d'envoyer la demande
+de connexion (voir `EMAIL_DOMAIN` dans `frontend/src/pages/Login.jsx`).
+
+1. Supabase → **Authentication → Users** → **Add user**
+2. Dans le champ email, saisis `<identifiant>@datalian.local` — par exemple
+   `innovation@datalian.local`
+3. Coche **"Auto Confirm User"** (indispensable : sans ça, Supabase attend une
+   confirmation par email, qui n'arrivera jamais sur un domaine bidon)
+4. Renseigne un mot de passe, à communiquer toi-même à la personne/au service
+5. Répète pour chaque compte à créer
+
+Sur l'écran de connexion du site, il suffit ensuite de taper `innovation`
+(sans `@datalian.local`) + le mot de passe.
+
+> Un compte de ce type est partagé par tous ceux qui l'utilisent — on perd la
+> traçabilité "qui a fait quoi" par personne. Si tu veux garder un accès
+> nominatif pour certaines personnes, tu peux tout à fait mélanger les deux
+> approches (comptes par service **et** comptes par personne).
+
+**F. Développement local**
+
+1. Backend : copie `backend/.env.example` en `backend/.env`, renseigne
+   `SUPABASE_URL`
+2. Frontend : copie `frontend/.env.example` en `frontend/.env.local`, renseigne
+   `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`
+3. Relance normalement (`uvicorn` / `npm run dev`) — l'écran de connexion
+   apparaît aussi en local désormais, avec les mêmes comptes que sur le site
+   déployé (même projet Supabase).
+
+**G. Vérifier**
+
+1. Ouvre le frontend déployé → l'écran de connexion doit s'afficher
+2. Connecte-toi avec un des comptes créés à l'étape E
+3. Le dashboard doit s'afficher normalement, et l'email connecté doit
+   apparaître en bas de la barre latérale avec un bouton "Déconnexion"
+
+---
+
 ## Ce qui ne change pas
 
 - **Développement local** (`.\.venv\Scripts\Activate.ps1` + `uvicorn` + `npm run dev`)
-  fonctionne exactement comme avant, avec SQLite.
-- **Docker Compose** (`docker-compose up`) fonctionne aussi exactement comme avant.
+  fonctionne comme avant, avec SQLite pour les données. Seule différence depuis
+  l'étape 5 : il faut aussi configurer les clés Supabase en local (voir
+  étape 5.F) pour passer l'écran de connexion — c'est voulu, l'app protège
+  désormais des données de salariés partout, y compris en local.
+- **Docker Compose** (`docker-compose up`) fonctionne aussi comme avant, avec
+  les mêmes variables d'environnement à fournir pour l'authentification.
 
-Les changements de code sont purement additifs (variables d'environnement avec
-valeurs par défaut) — rien n'a été cassé pour l'usage local.
+Les changements de code sont additifs (variables d'environnement, nouveaux
+fichiers) — rien d'existant n'a été supprimé ou cassé.
 
 ---
 

@@ -1,7 +1,12 @@
-from fastapi import FastAPI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, Base
+from .auth import get_current_user
 from .routers import datasets, missions, agents, settings, dashboard
 
 Base.metadata.create_all(bind=engine)
@@ -15,11 +20,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(datasets.router)
-app.include_router(missions.router)
-app.include_router(agents.router)
-app.include_router(settings.router)
-app.include_router(dashboard.router)
+# Toutes les routes métier exigent un jeton Supabase valide.
+# /api/health reste public (utilisé pour vérifier que le serveur tourne).
+authenticated = [Depends(get_current_user)]
+app.include_router(datasets.router, dependencies=authenticated)
+app.include_router(missions.router, dependencies=authenticated)
+app.include_router(agents.router, dependencies=authenticated)
+app.include_router(settings.router, dependencies=authenticated)
+app.include_router(dashboard.router, dependencies=authenticated)
 
 
 @app.get("/api/health")
