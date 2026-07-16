@@ -62,7 +62,12 @@ def get_dashboard(
         flagged = flagged.filter(Dataset.day_date <= date_to)
     flagged_count = flagged.scalar() or 0
 
-    total_datasets = db.query(func.count(Dataset.id)).scalar() or 0
+    datasets_q = db.query(func.count(Dataset.id))
+    if date_from:
+        datasets_q = datasets_q.filter(Dataset.day_date >= date_from)
+    if date_to:
+        datasets_q = datasets_q.filter(Dataset.day_date <= date_to)
+    total_datasets = datasets_q.scalar() or 0
 
     return DashboardOut(
         total_missions=agg.total or 0,
