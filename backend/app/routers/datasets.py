@@ -18,27 +18,18 @@ router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 UPLOAD_DIR = tempfile.gettempdir()
 
 
-def _get_settings(db: Session) -> dict:
+def get_settings(db: Session) -> dict:
     rows = db.query(AppSetting).all()
     return {r.key: r.value for r in rows}
 
 
-@router.post("/upload", response_model=DatasetOut)
-async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    if not file.filename.endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Only .xlsx files are supported")
+def import_parsed_dataset(db: Session, filename: str, parsed: dict) -> Dataset:
+    """Insert a dataset already parsed by parse_excel() into the DB.
 
-    tmp_path = os.path.join(UPLOAD_DIR, f"tmp_{file.filename}")
-    with open(tmp_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-
-    try:
-        settings = _get_settings(db)
-        parsed = parse_excel(tmp_path, settings)
-    except Exception as e:
-        os.remove(tmp_path)
-        raise HTTPException(status_code=422, detail=f"Parse error: {str(e)}")
-
+    Shared between the manual upload endpoint and the daily cron import,
+    so both stay in sync on how a dataset is stored (same replace-by-date
+    and agent-upsert rules).
+    """
     day_date = parsed["day_date"]
 
     # If dataset for this date already exists → delete it entirely
@@ -63,7 +54,7 @@ async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get
     batch = sum(1 for m in missions_data if m["is_batch"])
 
     dataset = Dataset(
-        filename=file.filename,
+        filename=filename,
         day_date=day_date,
         imported_at=datetime.utcnow(),
         total_missions=len(missions_data),
@@ -96,6 +87,26 @@ async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get
 
     db.commit()
     db.refresh(dataset)
+    return dataset
+
+
+@router.post("/upload", response_model=DatasetOut)
+async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    if not file.filename.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are supported")
+
+    tmp_path = os.path.join(UPLOAD_DIR, f"tmp_{file.filename}")
+    with open(tmp_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    try:
+        settings = get_settings(db)
+        parsed = parse_excel(tmp_path, settings)
+    except Exception as e:
+        os.remove(tmp_path)
+        raise HTTPException(status_code=422, detail=f"Parse error: {str(e)}")
+
+    dataset = import_parsed_dataset(db, file.filename, parsed)
     os.remove(tmp_path)
     return dataset
 

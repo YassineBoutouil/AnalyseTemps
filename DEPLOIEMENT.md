@@ -285,6 +285,95 @@ Sur l'écran de connexion du site, il suffit ensuite de taper `innovation`
 
 ---
 
+## Étape 6 : récupération automatique du dataset de la veille (cron)
+
+Plutôt que d'uploader chaque `.xlsx` à la main, le backend va chaque jour
+récupérer lui-même le dataset de la veille auprès de l'API DecisionBrain
+(`dat.atalian-dat-prod.decisionbrain.cloud`), exactement comme le faisait
+`Script Python API DATALIAN.py`, mais automatiquement.
+
+### Comment ça marche
+
+- Vercel propose des **Cron Jobs** : une URL de ton API, appelée automatiquement
+  à une heure fixe, tous les jours. Pas besoin de laisser un programme tourner
+  en continu (impossible de toute façon sur des fonctions serverless).
+- Une nouvelle route `GET /api/cron/import-daily` calcule la date d'hier,
+  appelle l'API DecisionBrain, dézippe la réponse, et importe chaque `.xlsx`
+  trouvé avec exactement la même logique que l'upload manuel (même règle : un
+  dataset qui existe déjà pour cette date est remplacé).
+- Cette route est protégée par un secret dédié (`CRON_SECRET`), différent du
+  compte Supabase — ce n'est pas un utilisateur qui l'appelle, c'est Vercel.
+  Personne d'autre ne peut la déclencher sans connaître ce secret.
+
+### Ce qui a été changé dans le code (fait)
+
+- `backend/app/decisionbrain_client.py` (nouveau) : appelle l'API DecisionBrain
+  et extrait les `.xlsx` du ZIP retourné (repris de ton script).
+- `backend/app/routers/cron.py` (nouveau) : route `/api/cron/import-daily`,
+  protégée par `CRON_SECRET`.
+- `backend/app/routers/datasets.py` : la logique d'import (upsert agents,
+  remplacement du dataset du jour, création des missions) a été extraite dans
+  une fonction `import_parsed_dataset()`, réutilisée par l'upload manuel *et*
+  par le cron — pour être sûr que les deux se comportent exactement pareil.
+- `backend/app/main.py` : branche la nouvelle route cron (sans le jeton
+  Supabase, avec son propre secret).
+- `backend/vercel.json` : ajoute la config `crons`, planifiée à `0 6 * * *`
+  (6h00 UTC = 8h heure de Paris en été/CEST — voir remarque plus bas pour
+  l'hiver).
+- `backend/requirements.txt` : ajout de `requests` (appel HTTP vers
+  DecisionBrain).
+- `backend/.env.example` : ajout de `DECISIONBRAIN_API_KEY` et `CRON_SECRET`.
+
+**Testé en réel** (pas une simulation) : l'appel a récupéré le vrai dataset
+d'hier (`2026-07-15_scenario_2bff.xlsx`, 168 missions) directement depuis
+DecisionBrain et l'a importé en base — visible ensuite via `/api/datasets`
+comme n'importe quel import manuel. La route refuse aussi correctement une
+requête sans le bon secret (401).
+
+> ⚠️ **Remarque sur l'heure** : Vercel Cron fonctionne uniquement en UTC, sans
+> notion de fuseau horaire. `0 6 * * *` correspond à 8h à Paris en été
+> (CEST, UTC+2) mais à 7h en hiver (CET, UTC+1) — un décalage d'une heure
+> selon la saison, sans conséquence pratique ici (on importe "hier", pas une
+> heure précise dans la journée).
+
+### Ce qu'il te reste à faire
+
+**A. Récupérer la clé DecisionBrain**
+
+Elle est dans `Script Python API DATALIAN.py`, variable `API_KEY` (déjà
+exclue de Git, voir plus haut).
+
+**B. Configurer le backend déployé (Vercel)**
+
+1. Projet backend → **Settings → Environment Variables**
+2. Ajoute `DECISIONBRAIN_API_KEY` = la clé de l'étape A
+3. Ajoute `CRON_SECRET` = une valeur aléatoire de ton choix (par exemple générée
+   avec `python -c "import secrets; print(secrets.token_hex(32))"`) — la même
+   que celle mise en local à l'étape C ci-dessous
+4. Onglet **Deployments** → dernier déploiement → **⋯ → Redeploy**
+   (le fichier `vercel.json` doit être redéployé pour que Vercel enregistre le
+   nouveau cron — vérifiable ensuite dans l'onglet **Cron Jobs** du projet)
+
+**C. Développement local**
+
+1. Backend : dans `backend/.env`, ajoute `DECISIONBRAIN_API_KEY` et
+   `CRON_SECRET` (mêmes valeurs qu'en B)
+2. Pour tester manuellement sans attendre 6h du matin :
+   ```powershell
+   curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:8000/api/cron/import-daily
+   ```
+
+**D. Vérifier en production**
+
+1. Sur Vercel, projet backend → onglet **Cron Jobs** → le job
+   `/api/cron/import-daily` doit apparaître, planifié tous les jours à 6h00 UTC
+2. Le lendemain, vérifie dans **Deployments → Functions → Logs** (ou l'onglet
+   Cron Jobs, qui garde un historique des exécutions) qu'il s'est bien exécuté,
+   et regarde dans l'app que le dataset de la veille est apparu tout seul dans
+   "Datasets"
+
+---
+
 ## Ce qui ne change pas
 
 - **Développement local** (`.\.venv\Scripts\Activate.ps1` + `uvicorn` + `npm run dev`)
@@ -311,3 +400,6 @@ fichiers) — rien d'existant n'a été supprimé ou cassé.
 - **CORS** : le backend autorise actuellement toutes les origines (`allow_origins=["*"]`
   dans `main.py`). Ça fonctionne mais ce n'est pas restrictif — tu peux, plus tard,
   le limiter à l'URL exacte du frontend déployé si tu veux durcir un peu.
+- **Vercel Cron (Hobby)** : les cron jobs sont limités à une exécution par jour
+  sur le plan gratuit — parfaitement suffisant pour notre besoin (une fois par
+  jour), mais tu ne pourrais pas passer à toutes les heures sans upgrader.

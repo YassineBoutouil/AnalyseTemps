@@ -13,3 +13,6 @@ dist/
 # Env
 .env
 .env.local
+
+# Script perso avec clé API en dur — ne doit jamais partir sur GitHub
+Script Python API DATALIAN.py
