@@ -4,7 +4,8 @@ import {
   LineChart, Line, ReferenceLine
 } from 'recharts'
 import StatCard from '../components/StatCard'
-import DateRangePicker from '../components/DateRangePicker'
+import MonthPicker from '../components/MonthPicker'
+import useMonthFilter from '../utils/useMonthFilter'
 import { getDashboard, getDailySummary } from '../utils/api'
 import { fmtRatio, fmtDate } from '../utils/formatters'
 
@@ -23,23 +24,24 @@ const CustomTooltip = ({ active, payload, label }) => {
 }
 
 export default function Dashboard() {
-  const [range, setRange] = useState({ from: null, to: null })
+  const { month, setMonth, availableMonths, dateFrom, dateTo } = useMonthFilter()
   const [kpis, setKpis] = useState(null)
   const [daily, setDaily] = useState([])
 
   const load = () => {
-    const p = { date_from: range.from, date_to: range.to }
+    if (!month) return
+    const p = { date_from: dateFrom, date_to: dateTo }
     getDashboard(p).then(setKpis)
     getDailySummary(p).then(setDaily)
   }
 
-  useEffect(load, [range])
+  useEffect(load, [month])
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-        <DateRangePicker from={range.from} to={range.to} onChange={setRange} />
+        <MonthPicker value={month} onChange={setMonth} availableMonths={availableMonths} />
       </div>
 
       {kpis && (

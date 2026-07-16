@@ -116,6 +116,13 @@ def list_datasets(db: Session = Depends(get_db)):
     return db.query(Dataset).order_by(Dataset.day_date.desc()).all()
 
 
+@router.get("/months")
+def list_available_months(db: Session = Depends(get_db)):
+    rows = db.query(Dataset.day_date).distinct().all()
+    months = sorted({d[0][:7] for d in rows}, reverse=True)
+    return months
+
+
 @router.delete("/{dataset_id}")
 def delete_dataset(dataset_id: int, db: Session = Depends(get_db)):
     ds = db.get(Dataset, dataset_id)

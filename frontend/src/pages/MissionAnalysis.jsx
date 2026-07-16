@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts'
-import DateRangePicker from '../components/DateRangePicker'
+import MonthPicker from '../components/MonthPicker'
+import useMonthFilter from '../utils/useMonthFilter'
 import { getMissions, getRatioDistribution } from '../utils/api'
 import { fmtRatio, fmtDuration, fmtDate, fmtTime, ratioBg } from '../utils/formatters'
 
@@ -12,7 +13,7 @@ const BADGE = {
 }
 
 export default function MissionAnalysis() {
-  const [range, setRange] = useState({ from: null, to: null })
+  const { month, setMonth, availableMonths, dateFrom, dateTo } = useMonthFilter()
   const [anomalyOnly, setAnomalyOnly] = useState(false)
   const [includeBatch, setIncludeBatch] = useState(false)
   const [missions, setMissions] = useState([])
@@ -20,19 +21,20 @@ export default function MissionAnalysis() {
   const [loading, setLoading] = useState(false)
 
   const load = () => {
+    if (!month) return
     setLoading(true)
     const p = {
-      date_from: range.from,
-      date_to: range.to,
+      date_from: dateFrom,
+      date_to: dateTo,
       anomaly_only: anomalyOnly,
       include_batch: includeBatch,
       limit: 500,
     }
     getMissions(p).then(m => { setMissions(m); setLoading(false) })
-    getRatioDistribution({ date_from: range.from, date_to: range.to }).then(setDistrib)
+    getRatioDistribution({ date_from: dateFrom, date_to: dateTo }).then(setDistrib)
   }
 
-  useEffect(load, [range, anomalyOnly, includeBatch])
+  useEffect(load, [month, anomalyOnly, includeBatch])
 
   return (
     <div className="p-8">
@@ -40,7 +42,7 @@ export default function MissionAnalysis() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Analyse des Missions</h1>
         </div>
-        <DateRangePicker from={range.from} to={range.to} onChange={setRange} />
+        <MonthPicker value={month} onChange={setMonth} availableMonths={availableMonths} />
       </div>
 
       {/* Filters */}

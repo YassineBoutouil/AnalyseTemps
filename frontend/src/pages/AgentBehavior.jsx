@@ -3,7 +3,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ScatterChart, Scatter, Cell
 } from 'recharts'
-import DateRangePicker from '../components/DateRangePicker'
+import MonthPicker from '../components/MonthPicker'
+import useMonthFilter from '../utils/useMonthFilter'
 import { getAgents, getAgentMissions } from '../utils/api'
 import { fmtRatio, fmtDuration, fmtDate } from '../utils/formatters'
 
@@ -104,21 +105,22 @@ function AgentDetail({ agentId, agentName, range, onClose }) {
 }
 
 export default function AgentBehavior() {
-  const [range, setRange] = useState({ from: null, to: null })
+  const { month, setMonth, availableMonths, dateFrom, dateTo } = useMonthFilter()
   const [agents, setAgents] = useState([])
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
   const [sortKey, setSortKey] = useState('too_quick_count')
 
   const load = () => {
+    if (!month) return
     setLoading(true)
-    getAgents({ date_from: range.from, date_to: range.to }).then(d => {
+    getAgents({ date_from: dateFrom, date_to: dateTo }).then(d => {
       setAgents(d)
       setLoading(false)
     })
   }
 
-  useEffect(load, [range])
+  useEffect(load, [month])
 
   const sorted = [...agents].sort((a, b) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0))
 
@@ -139,7 +141,7 @@ export default function AgentBehavior() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Comportement Agents</h1>
         </div>
-        <DateRangePicker from={range.from} to={range.to} onChange={setRange} />
+        <MonthPicker value={month} onChange={setMonth} availableMonths={availableMonths} />
       </div>
 
       <div className="flex items-center gap-6 mb-6 text-xs text-slate-400">
@@ -220,7 +222,7 @@ export default function AgentBehavior() {
         <AgentDetail
           agentId={selected.agent_id}
           agentName={selected.agent_name}
-          range={range}
+          range={{ from: dateFrom, to: dateTo }}
           onClose={() => setSelected(null)}
         />
       )}

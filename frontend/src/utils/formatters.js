@@ -21,6 +21,18 @@ export const fmtTime = (iso) => {
   return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
+const MONTH_NAMES_FR = [
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+]
+
+// "2026-04" -> "avril-26"
+export const fmtMonthLabel = (ym) => {
+  if (!ym) return '—'
+  const [y, mo] = ym.split('-')
+  return `${MONTH_NAMES_FR[parseInt(mo, 10) - 1]}-${y.slice(2)}`
+}
+
 export const ratioColor = (ratio, anomaly) => {
   if (anomaly === 'too_quick') return 'text-red-600'
   if (anomaly === 'too_long') return 'text-orange-500'

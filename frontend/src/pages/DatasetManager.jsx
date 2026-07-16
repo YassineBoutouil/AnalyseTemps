@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { getDatasets, uploadDataset, deleteDataset } from '../utils/api'
 import { fmtDate } from '../utils/formatters'
+import MonthPicker from '../components/MonthPicker'
+import useMonthFilter from '../utils/useMonthFilter'
 
 function UploadZone({ onUploaded }) {
   const [uploading, setUploading] = useState(false)
@@ -73,8 +75,12 @@ function UploadZone({ onUploaded }) {
 export default function DatasetManager() {
   const [datasets, setDatasets] = useState([])
   const [deleting, setDeleting] = useState(null)
+  const { month, setMonth, availableMonths, refreshMonths } = useMonthFilter()
 
-  const load = () => getDatasets().then(setDatasets)
+  const load = () => {
+    getDatasets().then(setDatasets)
+    refreshMonths()
+  }
 
   useEffect(() => { load() }, [])
 
@@ -86,11 +92,16 @@ export default function DatasetManager() {
     load()
   }
 
+  const filteredDatasets = month ? datasets.filter(ds => ds.day_date.slice(0, 7) === month) : datasets
+
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-800">Gestion des Datasets</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Import et historique — un seul dataset actif par date</p>
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Gestion des Datasets</h1>
+          <p className="text-slate-500 text-sm mt-0.5">Import et historique — un seul dataset actif par date</p>
+        </div>
+        <MonthPicker value={month} onChange={setMonth} availableMonths={availableMonths} />
       </div>
 
       <UploadZone onUploaded={load} />
@@ -102,8 +113,8 @@ export default function DatasetManager() {
 
       {/* Dataset list */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        {datasets.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-slate-400">Aucun dataset importé</div>
+        {filteredDatasets.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-slate-400">Aucun dataset importé pour ce mois</div>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -118,7 +129,7 @@ export default function DatasetManager() {
               </tr>
             </thead>
             <tbody>
-              {datasets.map(ds => (
+              {filteredDatasets.map(ds => (
                 <tr key={ds.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="px-5 py-3 font-semibold text-slate-800">{fmtDate(ds.day_date)}</td>
                   <td className="px-5 py-3 text-slate-500 font-mono text-xs">{ds.filename}</td>

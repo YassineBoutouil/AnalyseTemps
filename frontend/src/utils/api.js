@@ -23,6 +23,7 @@ export const getRatioDistribution = (params) => api.get('/missions/ratio-distrib
 export const getMissions = (params) => api.get('/missions', { params }).then(r => r.data)
 
 export const getDatasets = () => api.get('/datasets').then(r => r.data)
+export const getAvailableMonths = () => api.get('/datasets/months').then(r => r.data)
 export const uploadDataset = (file) => {
   const fd = new FormData()
   fd.append('file', file)
