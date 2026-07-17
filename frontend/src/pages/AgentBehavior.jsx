@@ -6,7 +6,15 @@ import {
 import MonthPicker from '../components/MonthPicker'
 import useMonthFilter from '../utils/useMonthFilter'
 import { getAgents, getAgentMissions } from '../utils/api'
-import { fmtRatio, fmtDuration, fmtDate } from '../utils/formatters'
+import { fmtRatio, fmtDuration, fmtDate, fmtTime } from '../utils/formatters'
+
+const DETAIL_SORT_ACCESSORS = {
+  day_date: m => m.day_date || '',
+  zone_short: m => (m.zone_short || '').toLowerCase(),
+  planned_duration_min: m => m.planned_duration_min ?? -Infinity,
+  actual_duration_min: m => m.actual_duration_min ?? -Infinity,
+  ratio: m => m.ratio ?? -Infinity,
+}
 
 function ReliabilityBadge({ score }) {
   if (score == null) return <span className="text-slate-300 text-xs">—</span>
@@ -20,6 +28,10 @@ function ReliabilityBadge({ score }) {
 
 function AgentDetail({ agentId, agentName, range, onClose }) {
   const [missions, setMissions] = useState([])
+  const [filterDay, setFilterDay] = useState('')
+  const [filterZone, setFilterZone] = useState('')
+  const [sortKey, setSortKey] = useState(null)
+  const [sortDir, setSortDir] = useState('asc')
 
   useEffect(() => {
     getAgentMissions(agentId, { date_from: range.from, date_to: range.to }).then(setMissions)
@@ -32,9 +44,43 @@ function AgentDetail({ agentId, agentName, range, onClose }) {
     anomaly: m.anomaly_type,
   })).filter(m => m.ratio_pct != null)
 
+  const dayOptions = [...new Set(missions.map(m => m.day_date))].sort()
+  const zoneOptions = [...new Set(missions.map(m => m.zone_short).filter(Boolean))].sort()
+
+  const toggleSort = (key) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  let visibleMissions = missions
+    .filter(m => !filterDay || m.day_date === filterDay)
+    .filter(m => !filterZone || m.zone_short === filterZone)
+  if (sortKey) {
+    visibleMissions = [...visibleMissions].sort((a, b) => {
+      const av = DETAIL_SORT_ACCESSORS[sortKey](a)
+      const bv = DETAIL_SORT_ACCESSORS[sortKey](b)
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }
+
+  const DETAIL_COLUMNS = [
+    { key: 'day_date', label: 'Date', align: 'text-left' },
+    { key: 'zone_short', label: 'Zone', align: 'text-left' },
+    { key: null, label: 'Début prévu', align: 'text-right' },
+    { key: null, label: 'Début réel', align: 'text-right' },
+    { key: 'planned_duration_min', label: 'Prévu', align: 'text-right' },
+    { key: 'actual_duration_min', label: 'Réel', align: 'text-right' },
+    { key: 'ratio', label: 'Ratio', align: 'text-center' },
+  ]
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-8">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
             <h3 className="font-bold text-slate-800 text-lg">{agentName}</h3>
@@ -67,21 +113,52 @@ function AgentDetail({ agentId, agentName, range, onClose }) {
               </ResponsiveContainer>
             </div>
           )}
+
+          <div className="flex items-center gap-3 mb-3">
+            <select
+              value={filterDay}
+              onChange={e => setFilterDay(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Toutes les dates</option>
+              {dayOptions.map(d => (
+                <option key={d} value={d}>{fmtDate(d)}</option>
+              ))}
+            </select>
+            <select
+              value={filterZone}
+              onChange={e => setFilterZone(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Toutes les zones</option>
+              {zoneOptions.map(z => (
+                <option key={z} value={z}>{z}</option>
+              ))}
+            </select>
+            <div className="ml-auto text-xs text-slate-400">{visibleMissions.length} missions</div>
+          </div>
+
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
-                <th className="text-left py-2 px-2 text-slate-500 font-medium">Date</th>
-                <th className="text-left py-2 px-2 text-slate-500 font-medium">Zone</th>
-                <th className="text-right py-2 px-2 text-slate-500 font-medium">Prévu</th>
-                <th className="text-right py-2 px-2 text-slate-500 font-medium">Réel</th>
-                <th className="text-center py-2 px-2 text-slate-500 font-medium">Ratio</th>
+                {DETAIL_COLUMNS.map(c => (
+                  <th
+                    key={c.label}
+                    className={`py-2 px-2 text-slate-500 font-medium ${c.align} ${c.key ? 'cursor-pointer select-none hover:text-blue-600' : ''}`}
+                    onClick={c.key ? () => toggleSort(c.key) : undefined}
+                  >
+                    {c.label} {c.key && sortKey === c.key && (sortDir === 'asc' ? '↑' : '↓')}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {missions.map(m => (
+              {visibleMissions.map(m => (
                 <tr key={m.id} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="py-2 px-2 text-slate-500">{fmtDate(m.day_date)}</td>
                   <td className="py-2 px-2 text-slate-700 max-w-[180px] truncate" title={m.zone_short}>{m.zone_short || '—'}</td>
+                  <td className="py-2 px-2 text-right text-slate-500">{fmtTime(m.planned_start)}</td>
+                  <td className="py-2 px-2 text-right text-slate-500">{fmtTime(m.actual_start)}</td>
                   <td className="py-2 px-2 text-right text-slate-600">{fmtDuration(m.planned_duration_min)}</td>
                   <td className="py-2 px-2 text-right text-slate-600">{fmtDuration(m.actual_duration_min)}</td>
                   <td className="py-2 px-2 text-center">

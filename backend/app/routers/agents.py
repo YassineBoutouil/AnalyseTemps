@@ -104,6 +104,8 @@ def agent_missions(
             "id": m.id,
             "day_date": m.dataset.day_date if m.dataset else "",
             "zone_short": m.zone_short,
+            "planned_start": m.planned_start,
+            "actual_start": m.actual_start,
             "planned_duration_min": m.planned_duration_min,
             "actual_duration_min": m.actual_duration_min,
             "ratio": m.ratio,

@@ -40,6 +40,8 @@ def list_missions(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     agent_id: Optional[str] = Query(None),
+    zone: Optional[str] = Query(None),
+    day: Optional[str] = Query(None),
     anomaly_only: bool = Query(False),
     include_batch: bool = Query(False),
     status: Optional[str] = Query(None),
@@ -59,6 +61,10 @@ def list_missions(
         q = q.filter(Dataset.day_date <= date_to)
     if agent_id:
         q = q.filter(Mission.agent_id == agent_id)
+    if zone:
+        q = q.filter(Mission.zone_short == zone)
+    if day:
+        q = q.filter(Dataset.day_date == day)
     if anomaly_only:
         q = q.filter(Mission.anomaly_type.isnot(None))
     if not include_batch:
@@ -69,6 +75,20 @@ def list_missions(
     q = q.order_by(Dataset.day_date.desc(), Mission.planned_start)
     missions = q.offset(offset).limit(limit).all()
     return [_mission_to_out(m) for m in missions]
+
+
+@router.get("/zones")
+def list_zones(
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Mission.zone_short).join(Dataset).filter(Mission.zone_short.isnot(None)).distinct()
+    if date_from:
+        q = q.filter(Dataset.day_date >= date_from)
+    if date_to:
+        q = q.filter(Dataset.day_date <= date_to)
+    return sorted({r[0] for r in q.all()})
 
 
 @router.get("/daily-summary")

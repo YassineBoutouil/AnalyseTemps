@@ -21,6 +21,7 @@ export const getDashboard = (params) => api.get('/dashboard', { params }).then(r
 export const getDailySummary = (params) => api.get('/missions/daily-summary', { params }).then(r => r.data)
 export const getRatioDistribution = (params) => api.get('/missions/ratio-distribution', { params }).then(r => r.data)
 export const getMissions = (params) => api.get('/missions', { params }).then(r => r.data)
+export const getMissionZones = (params) => api.get('/missions/zones', { params }).then(r => r.data)
 
 export const getDatasets = () => api.get('/datasets').then(r => r.data)
 export const getAvailableMonths = () => api.get('/datasets/months').then(r => r.data)
